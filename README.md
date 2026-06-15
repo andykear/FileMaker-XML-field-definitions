@@ -72,12 +72,6 @@ references/
 
 ---
 
-## Related
-
-[FileMaker Script XML Skill for Claude](https://github.com/andykear/FileMaker-XMLsnippet-Claude-Skill) — the companion reverse-engineered specification for Script Workspace clipboard XML. Same envelope, same methodology, same community ethos.
-
----
-
 ## Contributing
 
 Found something that doesn't round-trip? A production export that contradicts the spec? Open an issue or PR. The spec improves through community testing — that's how it was built.
