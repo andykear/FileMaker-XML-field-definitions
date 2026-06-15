@@ -24,7 +24,27 @@ Describe the fields you need to an AI model with this spec as context, or write 
 2. In FileMaker Pro, open Manage Database and select the target table on the Fields tab
 3. Paste
 
-**Requires MBS Plugin to be installed in FileMaker Pro.** No MBS scripting is needed — the plugin simply needs to be present.
+---
+
+## Pasting into FileMaker
+
+Layout mode requires the `fmxmlsnippet type="LayoutObjectList"` format on the clipboard in FileMaker's internal clipboard format — not plain text. This skill has been tested with the **MBS Plugin** installed. Plugin-free clipboard conversion options are available in the FileMaker community and should work with this format, but have not been tested by Clockwork.
+
+---
+
+## Companion skill
+
+This skill covers field objects.
+There are 3 companion skills covering Scripts, Field and Layout plus an XML inspector app.
+
+[FileMaker Script XML Skill](https://github.com/andykear/FileMaker-XMLsnippet-Claude-Skill) — script steps for the Script Workspace
+
+[FileMaker Layout XML Skill](https://github.com/andykear/FileMaker-XMLsnippet-Layout-Claude-Skill) — layout objects for Layout mode
+
+[FileMaker Field Definitions XML Skill ](https://github.com/andykear/FileMaker-XML-field-definitions) — field definitions for Manage Database
+
+[FileMaker XML Inspector](https://github.com/andykear/FileMaker-XML-inspector-open-source) - Browser based XML Inspector.
+
 
 ---
 
