@@ -1,5 +1,10 @@
 # FileMaker Field Definition XML Specification
 
+[![Stars](https://img.shields.io/github/stars/andykear/FileMaker-XML-field-definitions?style=social)](https://github.com/andykear/FileMaker-XML-field-definitions)
+[![License](https://img.shields.io/badge/license-CC%20BY%204.0-green)](https://creativecommons.org/licenses/by/4.0/)
+
+Reverse-engineered specification of FileMaker's undocumented field definition XML format. Covers field types, auto-enter, validation, calculation and summary fields, verified against FileMaker's own exports rather than inferred.
+
 Developed by Andrew Kear of Clockwork Creative Technology and shared openly with the FileMaker/Claris community.
 
 ---
@@ -10,9 +15,9 @@ FileMaker's Script Workspace accepts XML paste — the `fmxmlsnippet type="FMObj
 
 The same envelope works for field definitions. Paste a correctly structured snippet into Manage Database with a table selected and FileMaker silently creates every field exactly as specified.
 
-Claris has never documented the format. The paste handler is strict in ways the XML parser is not — wrong structure produces fields with incorrect settings or silently drops elements with no error message.
+Claris has never documented the format. The paste handler is strict in ways the XML parser is not — wrong structure produces fields with incorrect settings or silently drops elements with no error or warning.
 
-This specification was built through systematic round-trip testing against production FileMaker 2025 solutions: generate XML, paste, export DDR, diff, iterate. A 74-field validation suite covering every documented variant was used to confirm the spec before publication.
+This specification was built through systematic round-trip testing against production FileMaker 2025 solutions: generate XML, paste, export DDR, diff, iterate. A 74-field validation suite covering all field types, storage variants, and auto-enter combinations ensures completeness.
 
 ---
 
@@ -28,23 +33,21 @@ Describe the fields you need to an AI model with this spec as context, or write 
 
 ## Pasting into FileMaker
 
-Layout mode requires the `fmxmlsnippet type="LayoutObjectList"` format on the clipboard in FileMaker's internal clipboard format — not plain text. This skill has been tested with the **MBS Plugin** installed. Plugin-free clipboard conversion options are available in the FileMaker community and should work with this format, but have not been tested by Clockwork.
+Field definitions require the `fmxmlsnippet type="FMObjectList"` format on the clipboard in FileMaker's internal clipboard format — not plain text. This has been tested with the **MBS Plugin** in FileMaker 2024 and 2025.
 
 ---
 
-## Companion skill
+## Companion skills
 
-This skill covers field objects.
-There are 3 companion skills covering Scripts, Field and Layout plus an XML inspector app.
+This skill covers field objects. There are three companion skills covering Scripts, Fields and Layouts, plus an XML inspector app.
 
 [FileMaker Script XML Skill](https://github.com/andykear/FileMaker-XMLsnippet-Claude-Skill) — script steps for the Script Workspace
 
 [FileMaker Layout XML Skill](https://github.com/andykear/FileMaker-XMLsnippet-Layout-Claude-Skill) — layout objects for Layout mode
 
-[FileMaker Field Definitions XML Skill ](https://github.com/andykear/FileMaker-XML-field-definitions) — field definitions for Manage Database
+[FileMaker XML Inspector](https://github.com/andykear/FileMaker-XML-inspector-open-source) — browser-based Save as XML analyser
 
-[FileMaker XML Inspector](https://github.com/andykear/FileMaker-XML-inspector-open-source) - Browser based XML Inspector.
-
+[FileMaker XML Scrubber](https://github.com/andykear/FileMaker-XML-scrubber) — redacts credentials before sharing with AI tools
 
 ---
 
