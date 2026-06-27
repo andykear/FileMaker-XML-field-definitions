@@ -23,10 +23,12 @@ When this skill is active, Claude will:
 1. **Unique field IDs.** Assign unique sequential `id` values across all fields in a single paste. Duplicate IDs cause silent drops when calculation auto-enter fields reference each other.
 2. **Value list references.** The `<ValueList>` child element is only preserved when the referenced value list ID exists in the target file at paste time. When the target file is unknown, omit the value list and tell the user to assign it manually after pasting.
 3. **Furigana dependency.** FileMaker drops the `<Furigana>` element on paste when the field's `<ValueList>` reference does not resolve. Ensure the value list ID is real if Furigana is required.
+4. **No XML comments in field paste.** The Manage Database field paste handler fails or pastes only partially when the snippet contains `<!-- -->` comments (unlike the script paste handler, which tolerates them). Generated field XML must be comment-free. Document intent with descriptive field names and `<Comment>` elements instead.
+5. **FileMaker 2026 elements (verified).** FileMaker 2026 (v26) adds `<Annotation>` (a `<Text>` child holding plain text, read by `FieldAnnotation()`) and `<DisplayNames enable="...">` (when enabled, a `<Calculation>` returning JSON keyed by `fm_common`/`fm_export`/`fm_sort`/`fm_table_view` plus optional custom keys, read by `FieldDisplayNames()`). Both are round-trip confirmed on Normal, Calculation, and Summary fields (see §14). Omit both for 2025 or mixed targets; emit both for 2026. Note that annotating any field narrows that table's generated DDL to annotated fields only. The 2026 calculation-controlled field entry (read-only via calculation) is a layout object property, not a field definition, and is out of scope here.
 
 ## Specification reference
 
-The full specification is in `references/filemaker_xmfd_spec.md` (v0.6), covering:
+The full specification is in `references/filemaker_xmfd_spec.md` (v1.0), covering:
 
 - All six data types: Text, Number, Date, Time, Timestamp, Container
 - All three field types: Normal, Calculation, Summary
