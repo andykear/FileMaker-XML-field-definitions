@@ -1,46 +1,29 @@
 # Canonical XML Format for FileMaker Field Definitions (XMFD)
 
 **Author:** Andrew Kear, Clockwork Creative Technology
-**Version:** 0.6
-**Date:** May 2026
-**Verified against:** FileMaker Pro 2025 on macOS
-**Licence:** [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/)
+**Version:** 1.0
+**Date:** June 2026
+**Verified against:** FileMaker Pro 2025 (v22) and 2026 (v26) on macOS, by round-trip (generate XML, paste, re-export, diff). Everything below is round-trip confirmed unless flagged in §13.
+**Licence:** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ---
 
-## Introduction
+## Scope
 
-FileMaker (FM) exposes an undocumented clipboard format for field definitions that allows
-fields to be created in bulk by pasting XML directly into Manage Database. The format uses
-the same `fmxmlsnippet type="FMObjectList"` envelope as the Script Workspace clipboard
-format, but contains `<Field>` elements rather than script steps.
-
-This capability is genuinely useful — it enables automated schema assembly, solution
-scaffolding, and schema migration. It requires MBS Plugin to be installed in FileMaker
-Pro, but no MBS scripting is needed. Despite this, the format has never been documented
-by Claris.
-
-This spec is reverse-engineered from production solution exports and validated by
-round-trip testing. It covers every field type, every auto-enter mechanism, all validation
-options, and container external storage. It is published as a community resource for
-developers who need to generate or manipulate field definitions programmatically.
-
-**Related:** The companion [FileMaker Script XML Spec](https://github.com/andykear/FileMaker-XMLsnippet-Claude-Skill)
-documents the equivalent format for Script Workspace clipboard XML.
+The `fmxmlsnippet type="FMObjectList"` clipboard format containing `<Field>` elements,
+pasted into Manage Database to create fields in bulk. Requires the MBS Plugin present in
+FileMaker Pro (no MBS scripting needed). Companion specs cover script-step and layout XML.
 
 ---
 
 ## Quick start
 
-Requires MBS Plugin to be installed in FileMaker Pro.
+1. Write or generate XML conforming to this spec (no comments, see §1).
+2. Select all, copy.
+3. In FileMaker Pro, open Manage Database, select the target table on the Fields tab, paste.
 
-1. Write or generate XML conforming to this spec.
-2. Open the file in a text editor, select all, copy.
-3. In FileMaker Pro, open Manage Database and select the target table on the Fields tab.
-4. Paste. FM creates the fields and assigns real internal IDs.
-
-Fields are added to the table in the order they appear in the XML. FM resolves Summary
-field source references and Lookup source fields by name at paste time.
+Fields are created in document order. FM assigns real internal IDs, and resolves Summary
+source fields and Lookup source fields by name at paste time.
 
 ---
 
@@ -53,8 +36,12 @@ field source references and Lookup source fields by name at paste time.
 </fmxmlsnippet>
 ```
 
-Identical envelope to script XML. 2-space indent throughout. UTF-8 encoding.
-XML comments are permitted — the paste handler ignores them.
+Identical envelope to script XML. 2-space indent, UTF-8.
+
+**No XML comments.** The field paste handler fails or pastes partially if the snippet
+contains `<!-- -->` comments (the script paste handler tolerates them; this one does not).
+Keep generated field XML comment-free; document intent with `<Comment>` elements and field
+names, which round-trip cleanly.
 
 ---
 
@@ -110,7 +97,9 @@ Field name as a string. May contain spaces. Case-sensitive.
   <!-- validation children -->
 </Validation>
 <Storage/>
-<!-- <Furigana/> only present when Furigana is configured -->
+<!-- Furigana only present when Furigana is configured (after Storage) -->
+<!-- FileMaker 2026 (v26): Annotation then DisplayNames follow, after Furigana.
+     Confirmed order: Storage, Furigana, Annotation, DisplayNames. See sections 10 and 14. -->
 ```
 
 ### Calculation field
@@ -120,6 +109,7 @@ Field name as a string. May contain spaces. Case-sensitive.
 <Comment/>
 <AutoEnter/>      <!-- simplified form, no sub-elements -->
 <Storage/>
+<!-- FileMaker 2026 (v26): Annotation then DisplayNames follow, after Storage -->
 ```
 
 `<Calculation>` is always first. This differs from Normal fields where `<Comment>` leads.
@@ -136,6 +126,7 @@ Field name as a string. May contain spaces. Case-sensitive.
   <ConstantData/>
 </AutoEnter>
 <!-- NO <Validation>, NO <Storage> -->
+<!-- FileMaker 2026 (v26): Annotation then DisplayNames follow, after AutoEnter -->
 ```
 
 ---
@@ -259,6 +250,11 @@ When `"CopyConstant"`, additional child elements appear inside `<Lookup>`:
 Various low id values (0, 2, 3, 5) have been seen in production exports. All represent
 the same broken state.
 
+All four `NoMatchCopyOption` values, the `<CopyConstantValue>` child (populated for
+`CopyConstant`), and both `CopyEmptyContent` states round-trip. Lookup references resolve
+against the target file's relationships and field IDs, so a generated `<Lookup>` block
+only round-trips when the relationship and source field exist in the target.
+
 ### 5.4 Coexisting AutoEnter children
 
 The following combinations are valid and confirmed by round-trip testing:
@@ -359,8 +355,19 @@ is inconsistent and the rule has not been confirmed.
 | `maxLength` | `"True"` / `"False"` | Max character length active |
 | `valuelist` | `"True"` / `"False"` | Value list validation active |
 | `calculation` | `"True"` / `"False"` | Calculation validation active |
-| `alwaysValidateCalculation` | `"True"` / `"False"` | Only `"False"` seen in exports |
+| `alwaysValidateCalculation` | `"True"` / `"False"` | See note below |
 | `type` | `"OnlyDuringDataEntry"` / `"Always"` | When validation fires |
+
+`alwaysValidateCalculation` is the inverse of the "Validate only if field has been
+modified" checkbox in the Specify Calculation dialog for calculation validation.
+`"True"` = always validate (checkbox off); `"False"` = validate only when the field has
+been modified (checkbox on). Confirmed by round-trip on v26.
+
+`message` and `messageCalc` distinguish the two forms of custom failure message.
+`message="True"` with an `<ErrorMessage>` child is a static message. `messageCalc="True"`
+with a `<MessageCalculation>` child is a calculated message, a capability added in
+FileMaker 21.1.1 (earlier clients can only set or display a static message). Both
+attributes are independent of `StrictValidation`.
 
 ### 7.2 Child element order
 
@@ -392,10 +399,15 @@ is inconsistent and the rule has not been confirmed.
 <ValueList id="1" name="list_name"/>
 
 <Range from="1" to="100"/>
+<!-- FM emits attributes as to then from: <Range to="100" from="1"/>.
+     Attribute order is not significant on paste; match native order when mirroring output. -->
 
 <Calculation table="table_name"><![CDATA[validation expression]]></Calculation>
 
 <MaxDataLength value="255"/>
+<!-- On Text fields this is a character limit. On Container (Binary) fields the SAME
+     element is the kilobyte limit (Maximum number of kilobytes). The field's dataType
+     determines the unit. Gated by maxLength="True" in both cases. -->
 
 <StrictValidation value="True"/>
 <!-- "True"  = override not allowed -->
@@ -414,6 +426,20 @@ entities:
 ```xml
 <ErrorMessage>Line one&#13;Line two</ErrorMessage>
 ```
+
+**Static vs calculated custom message (confirmed by round-trip on v26):**
+
+- A **static** custom message emits `message="True"`, `messageCalc="False"`, and only
+  `<ErrorMessage>`.
+- A **calculated** custom message emits **both** `message="True"` **and**
+  `messageCalc="True"`, and FM stores **both** elements: `<MessageCalculation>` holding
+  the calc, and `<ErrorMessage>` holding the calc's evaluated static fallback (for clients
+  earlier than 21.1.1 that cannot read the calculated form). Element order is
+  `<ErrorMessage>` then `<MessageCalculation>`, both after `<StrictValidation>`.
+
+Note the fallback in `<ErrorMessage>` is the evaluated result of the calc. If the calc is
+a bare quoted string literal such as `"hi"`, the stored fallback includes the quotes,
+because that is what the expression evaluates to as text.
 
 ### 7.4 Minimal validation block
 
@@ -458,6 +484,12 @@ cleanly and the value list can be assigned manually afterwards.
 **`autoIndex` omission rule:** when `index="All"`, `autoIndex` is omitted entirely.
 When `index="None"` or `index="Minimal"`, `autoIndex` is present.
 
+**Unique/Existing validation forces a minimum index.** A field with `<Unique value="True"/>`
+or `<Existing value="True"/>` cannot be unindexed. If such a field is pasted with
+`index="None"`, FileMaker stores it as `index="Minimal"`. Generate `index="Minimal"`
+(or higher) for any field carrying unique or existing validation, as the UUID primary
+key template does, to match what FM stores.
+
 **Global field** — `autoIndex` and `index` absent:
 ```xml
 <Storage indexLanguage="English" global="True" maxRepetition="1"/>
@@ -498,6 +530,12 @@ When `index="None"` or `index="Minimal"`, `autoIndex` is present.
 - `"1"` — relative to database file location
 
 `withFewerFolders` is only present on `type="Secure"`. Confirmed values: `"True"` / `"False"`.
+
+`type` has exactly two values, `"Open"` and `"Secure"`; these are the only external
+storage modes FileMaker offers (Claris Help: Setting up container fields to store data
+externally). "With fewer folders" is a sub-option of Secure, not a separate type.
+
+A custom open path is a different `<Location>` calculation; `<Secure/>` is an empty marker.
 
 ### 8.2 Calculation fields
 
@@ -581,26 +619,35 @@ Use the correct field name with any placeholder ID — FM will update it on past
 
 ### 9.2 `operation` values
 
-| XML value | UI label | Round-trip confirmed |
+Sub-options (population standard deviation, subtotalled fraction, weighted average,
+running total/count) are distinct `operation` strings, not separate attributes. The UI
+presents them as checkboxes under a base operation; each maps to its own value.
+
+| XML value | UI selection | `<AdditionalField>` |
 |---|---|---|
-| `Total` | Total of | Yes |
-| `Average` | Average of | Yes |
-| `Count` | Count of | Yes |
+| `Total` | Total of | No |
+| `RunningTotal` | Total of, Running total | Sort field, when restart is on |
+| `Average` | Average of | No |
+| `WeightedAverage` | Average of, Weighted average | Weight field (always) |
+| `Count` | Count of | No |
+| `RunningCount` | Count of, Running count | Sort field, when restart is on |
 | `Minimum` | Minimum | No |
-| `Maximum` | Maximum | Yes |
+| `Maximum` | Maximum | No |
 | `StdDeviation` | Standard Deviation of | No |
+| `StdDeviationByPopulation` | Standard Deviation of, by population | No |
 | `Fractional` | Fraction of Total of | No |
-| `RunningTotal` | Total of + Running total | No |
-| `WeightedAverage` | Average of (weighted) | No |
-| `List` | List of | Yes |
+| `FractionalSubtotal` | Fraction of Total of, Subtotalled | Group field (always) |
+| `List` | List of | No |
 
 ### 9.3 `<AdditionalField>`
 
-Required for `WeightedAverage` (weight field) and for `RunningTotal` when
-`restartForEachSortedGroup="True"` (sort field):
+Present for the operations marked in the table above. It holds the secondary field the
+operation needs: the weight field for `WeightedAverage`, the group field for
+`FractionalSubtotal`, and the sort field for `RunningTotal` / `RunningCount` when
+`restartForEachSortedGroup="True"`.
 
 ```xml
-<SummaryInfo restartForEachSortedGroup="True" summarizeRepetition="Together" operation="RunningTotal">
+<SummaryInfo restartForEachSortedGroup="True" summarizeRepetition="Together" operation="RunningCount">
   <SummaryField>
     <Field id="2" name="value_field"/>
   </SummaryField>
@@ -610,18 +657,34 @@ Required for `WeightedAverage` (weight field) and for `RunningTotal` when
 </SummaryInfo>
 ```
 
+Weighted average (the weight field is required regardless of restart):
+
+```xml
+<SummaryInfo restartForEachSortedGroup="False" summarizeRepetition="Together" operation="WeightedAverage">
+  <SummaryField>
+    <Field id="2" name="value_field"/>
+  </SummaryField>
+  <AdditionalField>
+    <Field id="1" name="weight_field"/>
+  </AdditionalField>
+</SummaryInfo>
+```
+
+Like `<SummaryField>`, the `<AdditionalField>` reference is resolved by name on paste.
+For `WeightedAverage` and `FractionalSubtotal`, `restartForEachSortedGroup` may be
+`"False"` and the `<AdditionalField>` is still present; for the running operations the
+`<AdditionalField>` appears only when restart is `"True"`. `summarizeRepetition="Individually"`
+is confirmed across all operations.
+
 ---
 
 ## 10. `<Furigana>`
 
-Furigana is a Japanese-locale feature that auto-populates one field with the phonetic
-reading of another as the user types. It is only relevant in Japanese-locale FileMaker
-installations. Most developers can ignore this section entirely.
+Japanese-locale feature: auto-populates one field with the phonetic reading of another.
+Emitted only when configured. Position: after `<Storage>`, before `<Annotation>` on v26
+(order: Storage, Furigana, Annotation, DisplayNames); last child on v22.
 
-The element is only emitted when Furigana is configured on the field. Position: last
-child of `<Field>`, after `<Storage>`.
-
-**Inactive state** — present in exports but with empty `inputMode`:
+**Inactive state**, present in exports but with empty `inputMode`:
 ```xml
 <Furigana inputMode="">
   <Field id="0" baseTable="table_name" name=""/>
@@ -635,16 +698,17 @@ child of `<Field>`, after `<Storage>`.
 </Furigana>
 ```
 
-When active, `furigana="True"` on `<AutoEnter>` and the inner `<Field>` child is
-populated. The inner `<Field>` uses a `baseTable` attribute not seen in other contexts.
+When active, `furigana="True"` on `<AutoEnter>` and the inner `<Field>` names the target
+(kana) field. The inner `<Field>` uses `baseTable` (not `table`), unique to this context.
 
-`inputMode` confirmed values:
+`inputMode` values. The six "Translate into" UI options are the complete set. `Hiragana`
+is v26 round-trip confirmed; the other five XML values are from v22 and unchanged.
 
 | UI label | XML value |
 |---|---|
 | (inactive) | `""` |
 | As is | `"AsEntered"` |
-| Hiragana | `"Hiragana"` |
+| Hiragana | `"Hiragana"` (v26 round-trip confirmed) |
 | Full-Width Katakana | `"2ByteKatakana"` |
 | Full-Width Roman | `"2ByteRoman"` |
 | Half-Width Katakana | `"1ByteKatakana"` |
@@ -678,6 +742,12 @@ is valid in the target file.
 
 6. **Requires MBS Plugin to be installed.** Copy the XML, select the target
    table in Manage Database on the Fields tab, paste.
+
+7. **No XML comments.** The field paste handler fails or pastes only partially when the
+   snippet contains `<!-- -->` comments. Generated field XML must be comment-free. See §1.
+
+8. **Unique/Existing validation forces minimum index.** A field with unique or existing
+   validation pasted with `index="None"` is stored as `index="Minimal"`. See §8.1.
 
 ---
 
@@ -830,27 +900,121 @@ and renumber `id` attributes to continue from your highest existing field ID.
 
 ## 13. Known gaps
 
-- **`StrictDataType` values** — `"Numeric"`, `"FourDigitYear"`, and `"TimeOfDay"`
-  confirmed. Other values likely exist for Date and Time fields but have not been
-  observed in exports.
-- **`alwaysValidateCalculation="True"`** — never seen in exports.
-- **Calculation field `<Validation>` presence** — absent in most Calculated field
-  exports, but the rule governing when it appears has not been established.
-- **`Remote type` values** — `"Open"` and `"Secure"` confirmed; other values may exist.
-- **`summarizeRepetition="Individually"`** — valid in the FM UI but not yet round-trip
-  confirmed.
-- **Furigana active state on paste** — inactive Furigana (`inputMode=""`) confirmed;
-  paste behaviour when Furigana is actively configured has not been tested.
-- **Child element ordering** — ordering is derived from export analysis and assumed
-  correct, but has not been tested by deliberately reordering elements.
+The only points not fully pinned down. None blocks generation.
+
+- **`StrictDataType` values**: `"Numeric"`, `"FourDigitYear"`, `"TimeOfDay"` confirmed.
+  Other Date/Time values may exist but are unobserved.
+- **Deliberate element reordering**: child order is confirmed for all observed cases; FM's
+  tolerance of intentionally reordered elements is untested.
+
+Calculation fields carry no `<Validation>` block: validation options are not user-settable
+on calcs (Claris Help) and none is emitted.
 
 ---
 
-## Contributing
+## 14. FileMaker 2026 (v26): field-level changes
 
-Errors, omissions, and additional confirmed variants are welcome via GitHub Issues at
-the repository where this spec is published. If you have access to FileMaker exports
-that cover unverified items in §13, please open an issue or pull request.
+FileMaker 2026 (internal version 26, released 10 June 2026) adds two field-level elements
+to the format: `<Annotation>` and `<DisplayNames>`. Both round-trip on Normal, Calculation,
+and Summary fields in empty and populated states. Emit them when targeting 2026.
+
+Position by field type:
+- Normal fields: after `<Storage>` (and after `<Furigana>` when present).
+- Calculation fields: after `<Storage>`.
+- Summary fields: after `<AutoEnter>` (summary fields have no `<Storage>`).
+
+`<Annotation>` precedes `<DisplayNames>` in all cases.
+
+### 14.1 Field annotation (AI / DDL description)
+
+A per-field description aimed at AI models, configured in the Advanced Options for Field
+dialog under "Add annotation in Data Definition Language (DDL)". It is separate from
+`<Comment>` and does not replace it. At runtime it is exposed by the `FieldAnnotation()`
+function (originated v26).
+
+`<Annotation>` wraps a single `<Text>` child holding plain text (not CDATA, not JSON).
+Standard XML escaping applies and round-trips intact, confirmed with `&`, `<`, `>`,
+quotes, non-ASCII characters, and a `&#13;` line break.
+
+Empty:
+```xml
+<Annotation>
+  <Text/>
+</Annotation>
+```
+
+Populated:
+```xml
+<Annotation>
+  <Text>Customer reference number used by the finance team</Text>
+</Annotation>
+```
+
+**Two DDL behaviours (not paste-format, but relevant when writing annotations):**
+
+1. **Annotations narrow DDL scope table-wide.** Once any field in a table has an
+   annotation, only annotated fields appear in generated DDL; the rest are excluded.
+2. **`[LLM]` comment bridge.** If annotation is blank and `<Comment>` begins with `[LLM]`,
+   FM uses the comment text (minus the tag) as the annotation in DDL.
+
+### 14.2 Custom field display name
+
+A display name distinct from the schema name, surfaced in native operations. Configured
+via "Customize field display names" in the Advanced Options for Field dialog. Exposed at
+runtime by `FieldDisplayNames()` (originated v26).
+
+`<DisplayNames>` carries an `enable` attribute. When enabled it holds a `<Calculation>`
+child (same shape as an auto-enter calculation: a `table` attribute and a CDATA body) that
+returns a JSON object of display-name keys. It is a calculation, not a stored string, so
+display names can be dynamic. Any expression returning the JSON object is valid;
+`JSONSetElement` is the canonical form the Specify dialog produces.
+
+Inactive:
+```xml
+<DisplayNames enable="False"/>
+```
+
+Active:
+```xml
+<DisplayNames enable="True">
+  <Calculation table="table_occurrence_name"><![CDATA[JSONSetElement ( "{}" ;
+  [ "fm_common" ; "Customer Ref" ; JSONString ] ;
+  [ "fm_export" ; "Customer Reference (Export)" ; JSONString ] ;
+  [ "fm_sort" ; "Cust Ref" ; JSONString ] ;
+  [ "fm_table_view" ; "Ref" ; JSONString ]
+)]]></Calculation>
+</DisplayNames>
+```
+
+The four built-in context keys (Claris Help, Defining advanced field options):
+
+| Key | Context |
+|---|---|
+| `fm_common` | Fallback for all features below, unless a more specific key is set |
+| `fm_export` | Specify Field Order for Export dialog and exported file headers |
+| `fm_sort` | Sort Records dialog |
+| `fm_table_view` | Table View column header |
+
+Specific key beats `fm_common`; if neither is set for a feature, the field name is used.
+Custom keys are allowed (read back via `FieldDisplayNames()`); the `fm_` prefix is reserved.
+
+The `<Calculation>` is stored verbatim, including empty-string keys, and round-trips
+unchanged. The sparse return documented for `FieldDisplayNames()` (only keys with values)
+is runtime output, not what is stored.
+
+### 14.3 Generation guidance
+
+- **2025 or mixed targets:** omit both elements. v26 normalises the empty state in on
+  paste; v22 has no knowledge of them.
+- **2026 targets:** emit both. Empty state is `<Annotation><Text/></Annotation>` and
+  `<DisplayNames enable="False"/>`; populated forms as in §14.1 and §14.2.
+- Annotating any field narrows the table's DDL to annotated fields only (§14.1).
+
+### 14.4 Out of scope
+
+2026 calculation-controlled field entry (editable / non-editable / read-only via
+calculation) is a **layout object** property (Layout Inspector, Data pane), not a field
+definition. See the companion Layout XML spec.
 
 ---
 
