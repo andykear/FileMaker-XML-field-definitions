@@ -85,11 +85,13 @@ references/
 
 ## Companion repos
 
-Four open-source resources for the FileMaker/Claris community:
+Five open-source resources for the FileMaker/Claris community:
 
 [FileMaker Script XML Skill](https://github.com/andykear/FileMaker-XMLsnippet-Claude-Skill) — script steps for the Script Workspace
 
 [FileMaker Layout XML Skill](https://github.com/andykear/FileMaker-XMLsnippet-Layout-Claude-Skill) — layout objects for Layout mode
+
+[FileMaker Field Definitions XML Skill](https://github.com/andykear/FileMaker-XML-field-definitions) — field definitions for Manage Database
 
 [FileMaker XML Inspector](https://github.com/andykear/FileMaker-XML-inspector-open-source) — browser-based Save as XML analyser
 
