@@ -1,9 +1,9 @@
 # Canonical XML Format for FileMaker Field Definitions (XMFD)
 
 **Author:** Andrew Kear, Clockwork Creative Technology
-**Version:** 1.0
-**Date:** June 2026
-**Verified against:** FileMaker Pro 2025 (v22) and 2026 (v26) on macOS, by round-trip (generate XML, paste, re-export, diff). Everything below is round-trip confirmed unless flagged in §13.
+**Version:** 2.0
+**Date:** July 2026
+**Verified against:** FileMaker Pro 2025 (v22) and 2026 (v26) on macOS, by round-trip (generate XML, paste, re-export, diff). Table-level paste (§15) verified on v26. Everything below is round-trip confirmed unless flagged in §13.
 **Licence:** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ---
@@ -11,8 +11,10 @@
 ## Scope
 
 The `fmxmlsnippet type="FMObjectList"` clipboard format containing `<Field>` elements,
-pasted into Manage Database to create fields in bulk. Requires the MBS Plugin present in
-FileMaker Pro (no MBS scripting needed). Companion specs cover script-step and layout XML.
+pasted into Manage Database to create fields in bulk — and, from v2.0, `<BaseTable>`
+elements pasted on the Tables tab to create complete tables, fields included (§15).
+Requires the MBS Plugin present in FileMaker Pro (no MBS scripting needed). Companion
+specs cover script-step and layout XML.
 
 ---
 
@@ -20,7 +22,9 @@ FileMaker Pro (no MBS scripting needed). Companion specs cover script-step and l
 
 1. Write or generate XML conforming to this spec (no comments, see §1).
 2. Select all, copy.
-3. In FileMaker Pro, open Manage Database, select the target table on the Fields tab, paste.
+3. In FileMaker Pro, open Manage Database. For bare `<Field>` elements, select the
+   target table on the Fields tab and paste. For `<BaseTable>` snippets, paste on the
+   Tables tab — FileMaker creates the table and every field inside it (§15).
 
 Fields are created in document order. FM assigns real internal IDs, and resolves Summary
 source fields and Lookup source fields by name at paste time.
@@ -167,15 +171,23 @@ auto-enter type in use.
 | `"CreationDate"` | Creation → Date |
 | `"CreationTime"` | Creation → Time |
 | `"CreationTimeStamp"` | Creation → Timestamp |
-| `"CreationAccountName"` | Creation → Name |
+| `"CreationName"` | Creation → Name |
+| `"CreationAccountName"` | Creation → Account Name |
 | `"ModificationDate"` | Modification → Date |
 | `"ModificationTime"` | Modification → Time |
 | `"ModificationTimeStamp"` | Modification → Timestamp |
-| `"ModificationAccountName"` | Modification → Name |
+| `"ModificationName"` | Modification → Name |
+| `"ModificationAccountName"` | Modification → Account Name |
 | `"ConstantData"` | Data (constant) |
 | `"PreviousRecord"` | Value from last visited record |
 
 Absent when no system value is active.
+
+`"CreationName"` and `"ModificationName"` are the user-name variants, distinct from the
+account-name variants. `"CreationName"` is generation-confirmed (pasted XML produces
+Creation → Name ticked in the UI); `"ModificationName"` is export-observed in two
+independent production files and sits in the same symmetric value pair. All other values
+are fully round-trip confirmed.
 
 ### 5.3 Child elements of `<AutoEnter>`
 
@@ -338,6 +350,24 @@ Simplified form with no sub-elements:
 <AutoEnter alwaysEvaluate="False"/>
 <AutoEnter alwaysEvaluate="True"/>
 ```
+
+### 6.1 Calculation context: the `table` attribute
+
+The `table` attribute on every `<Calculation>` element (calculation fields, auto-enter
+calcs, validation calcs, container Location calcs) records the **evaluation context** —
+the "evaluate this calculation from the context of" table occurrence in Manage Database —
+not necessarily the base table name. Production exports show calcs inside `BaseTable
+name="jobs"` carrying `table="employees jobs tagged"` where a non-default context TO was
+selected. Legacy exports with broken context carry `table=""`.
+
+Generation rules:
+
+- Emit the base table name unless the user specifies a context TO.
+- Never emit `table=""` — it is a broken-reference fossil, not a valid target.
+- On table paste, FM rewrites the context to the created table whenever the supplied
+  value does not resolve — both on collision rename and when the named TO simply does
+  not exist (§15.4). The local-context value is self-correcting; emit the base table
+  name.
 
 ---
 
@@ -749,6 +779,21 @@ is valid in the target file.
 8. **Unique/Existing validation forces minimum index.** A field with unique or existing
    validation pasted with `index="None"` is stored as `index="Minimal"`. See §8.1.
 
+9. **ID uniqueness is scoped per table.** Rule 1 applies within one table. In multi-table
+   snippets, sibling `<BaseTable>` elements each restart at `id="1"` — this is FM's own
+   copy format and is correct, not an error. See §15.3.
+
+10. **Colliding fields are renamed and re-IDed coherently.** Pasting fields into a table
+    that already contains those names/IDs: names get the standard space-number suffix
+    ("serial_no" → "serial_no 2"), IDs are reassigned to the next available internal
+    values, and — critically — calculation and summary references *within the pasted
+    set* are rewritten to follow the renamed copies ("quantity * unit_price" becomes
+    "quantity 2 * unit_price 2"; a Summary source rebinds to the duplicate's new ID and
+    name). The pasted group stays internally coherent rather than binding back to the
+    originals. Serial `nextValue` is preserved through the rename.
+
+Rules for the Tables tab handler (whole-table paste) are in §15.
+
 ---
 
 ## 12. Standard field templates
@@ -1015,6 +1060,151 @@ is runtime output, not what is stored.
 2026 calculation-controlled field entry (editable / non-editable / read-only via
 calculation) is a **layout object** property (Layout Inspector, Data pane), not a field
 definition. See the companion Layout XML spec.
+
+---
+
+## 15. Table-level paste: the `<BaseTable>` envelope
+
+New in v2.0. The same `FMObjectList` envelope, pasted on the **Tables tab** of Manage
+Database, creates complete tables — fields included — in one operation.
+
+Corroboration: four independent production exports on the copy side (tables from three
+different solutions, including a 300+ field production table), one generated 12-field
+table round-tripped byte-identical on v26 (151 elements, zero drift), and eight
+repeat-paste collision runs. Items not yet paste-tested are listed in §15.6.
+
+### 15.1 Envelope
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<fmxmlsnippet type="FMObjectList">
+  <BaseTable comment="" name="contacts">
+    <Field id="1" ...>...</Field>
+    <Field id="2" ...>...</Field>
+  </BaseTable>
+</fmxmlsnippet>
+```
+
+`<BaseTable>` carries exactly two attributes — `name` and `comment`, both from the
+Tables tab. No `id`, no UUID, no occurrence or record-count metadata. The field elements
+inside are **identical** to the bare-field format in §2–§10 and §14: the table envelope
+is a thin wrapper, not a different format. Every mechanism tested — calc auto-enter with
+context table, system values, serial, StrictDataType, NotEmpty/Unique/StrictValidation,
+all index levels including the `autoIndex` omission at `index="All"`, Unicode_Raw,
+stored and unstored calcs, Total summary — survives the envelope at full fidelity in
+both directions.
+
+Multiple `<BaseTable>` siblings in one snippet paste in a **single operation** — one
+paste on the Tables tab creates every table in the snippet, each with its fields intact
+and per-table IDs preserved. Round-trip confirmed with a two-table snippet, matching
+FM's own multi-table copy format. Whole-schema scaffolds are a single paste.
+
+**XML comments are tolerated by the Tables tab handler.** A snippet containing an
+`<!-- -->` comment inside the envelope pasted successfully, comment stripped, table and
+fields intact — unlike the Fields tab handler, which fails or pastes partially (§11
+rule 7). Same envelope, third parser behaviour, after the script handler's tolerance
+and the field handler's rejection. Generate comment-free regardless, so snippets stay
+valid for every handler.
+
+### 15.2 Forward references resolve
+
+A calculation field may reference a field defined **later** in document order. A stored
+calc `quantity * unit_price` with `unit_price` defined after it pasted and re-exported
+intact. The handler resolves field names after all fields in the table exist, so
+generated XML needs **no dependency ordering**. List fields in whatever order reads best.
+
+### 15.3 Field IDs
+
+- Into a fresh table, supplied IDs are preserved as written — sequential 1..n lands
+  as 1..n, and internal references (Summary `<SummaryField><Field id=.../>`) land intact.
+- ID uniqueness is scoped **per table**. Sibling `<BaseTable>` elements each start at
+  `id="1"`; this is FM's own multi-table copy format.
+- Generate sequential integers from 1 within each table.
+
+### 15.4 Name collisions: silent rename, context rebound
+
+Pasting a `<BaseTable>` whose name already exists produces no error and no prompt. FM
+silently creates the table under the standard suffix pattern: `paste_test` →
+`paste_test 2`, `paste_test 3`, ... (space plus number).
+
+Critically, every `<Calculation table="...">` inside the renamed table is **rewritten to
+the new table name** — even though a table matching the pasted value still exists in the
+file. The handler rebinds local calculation context to the newly created table, and
+local field references bind to the new table's own fields. Confirmed across seven
+consecutive collision pastes.
+
+Consequences: generated schema scaffolds cannot clobber or corrupt an existing table
+(worst case is a suffixed duplicate), and the local-context `table` value is
+self-correcting under rename.
+
+The same rebinding applies to a **nonexistent context TO**: a calc pasted with
+`table="no_such_occurrence_xyz"` re-exports with `table` rewritten to the created
+table's name, calculation intact and references resolved — no error, no neutralisation.
+Taken together, the `table` attribute is effectively advisory on table paste: the
+handler rebinds context to the created table whenever the supplied value does not
+resolve. Emit the base table name and move on.
+
+### 15.5 Serial `nextValue` is honoured
+
+`<Serial ... nextValue="1001"/>` pastes as next value 1001, exactly as written. This
+makes table paste a serial-continuity-preserving migration path — and a generation
+footgun. Never copy `nextValue` from an example: default it to `1` unless the user
+specifies otherwise. Text-field serials with alphanumeric `nextValue` (e.g. `"J114071"`)
+are export-observed; the numeric tail increments.
+
+### 15.4a Table paste creates a graph occurrence
+
+Every pasted table gets exactly one table occurrence on the relationships graph, named
+identically to the table, standalone with no relationships. Observed across all three
+paste variants: single table, collision rename (the collision pastes produced
+occurrences "paste_test 2" through "paste_test 8"), and multi table single paste —
+the same behaviour as creating a table manually. Generated schema scaffolds therefore
+arrive graph-ready: occurrences exist for scripting and layout context immediately, and
+relationship wiring is the only manual step.
+
+### 15.5a Invalid calculations are neutralised, not rejected
+
+A pasted calculation containing a `<Field Missing>` token (the literal marker FM writes
+into exports where a referenced field was deleted) does **not** fail the paste. FM
+creates the table and the field, preserves the calculation text, and wraps the entire
+body in a calculation comment:
+
+```
+pasted:      <Field Missing> + 1
+re-exported: /*<Field Missing> + 1*/
+```
+
+The field exists and looks normal in the field list, but its calculation evaluates to
+nothing. This is the sneakiest silent-failure mode in the format: no error, no drop,
+just a dead calc. The same neutralisation presumably applies to any syntactically
+invalid calculation, though only the Missing token is round-trip confirmed.
+
+Generation: never emit Missing tokens (they arrive comment-wrapped and dead). Analysis:
+flag both bare Missing tokens in exports and calculations whose entire body is
+comment-wrapped — the latter is the post-paste signature of a neutralised calc.
+
+### 15.6 Verification status
+
+Every behaviour in §15 is paste-verified on v26. The only export-observed item not yet
+independently generation-tested anywhere in this spec is the `"ModificationName"`
+auto-enter value (§5.2), which is symmetric with the confirmed `"CreationName"`.
+
+### 15.7 Copy-side fossils (analysis, not generation)
+
+Production table exports faithfully preserve broken state rather than cleaning it.
+Expect, and never generate:
+
+- `valuelist="True"` with no `<ValueList>` child — a dangling reference in the source
+  file (consistent with §7.5, which describes the paste-side drop). When the reference
+  resolves, table copy **does** emit `<ValueList>`.
+- `lookup="False"` (or `message="False"`, `maxLength="False"`, `valuelist="False"`) with
+  the corresponding child element still present — the option was configured then
+  disabled, and FM keeps the child. Which side the paste handler believes is untested.
+- Inactive `<Furigana>` with a null reference (`<Field id="0" ... name=""/>`) — see §10.
+- Internal base table IDs leaking through `<Lookup><Table id="1065xxx" .../>` — the only
+  place FM's internal table ID space appears in this format. Whether lookups rebind by
+  id or by name on paste is untested.
+- `table=""` on `<Calculation>` — broken evaluation context (§6.1).
 
 ---
 
