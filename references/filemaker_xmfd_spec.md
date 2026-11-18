@@ -1,7 +1,7 @@
 # Canonical XML Format for FileMaker Field Definitions (XMFD)
 
 **Author:** Andrew Kear, Clockwork Creative Technology
-**Version:** 2.1
+**Version:** 2.2
 **Verified against:** FileMaker Pro 2025 (v22) and 2026 (v26) on macOS, by round-trip (generate XML, paste, re-export, diff). Everything below is round-trip confirmed unless flagged in §13.
 **Licence:** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
@@ -968,6 +968,8 @@ the Fields-tab comment rule (§4) — XML comments still break that handler.
 
 - **`StrictDataType` values**: `"Numeric"`, `"FourDigitYear"`, `"TimeOfDay"` confirmed.
   Other Date/Time values may exist but are unobserved.
+- **26.1 display-name keys** (§14.2): copied from FileMaker Pro 26.1 in the documented
+  shape, not pasted back. Their meanings come from the 26.1.1 release notes.
 
 Calculation fields carry no `<Validation>` block: validation options are not user-settable
 on calcs (Claris Help) and none is emitted.
@@ -1060,9 +1062,28 @@ The four built-in context keys (Claris Help, Defining advanced field options):
 Specific key beats `fm_common`; if neither is set for a feature, the field name is used.
 Custom keys are allowed (read back via `FieldDisplayNames()`); the `fm_` prefix is reserved.
 
+**`[26.1+]` FileMaker 26.1.1 adds three keys and a way to hide a field** (release notes):
+
+| Key | Context |
+|---|---|
+| `fm_import` | Target field name in the Specify Import Order dialog |
+| `fm_sql` | Column headings of SQL query results; the name can also be used in place of the field name in SQL queries (for example with `ExecuteSQL`) |
+| `fm_odata` | Name in OData API responses; can also be used in OData API requests |
+
+Setting `fm_export` or `fm_sort` to JSON null (`JSONNull`) hides the field from the Specify
+Field Order for Export or Sort Records dialog; `fm_common` set to null hides it from both,
+unless a feature-specific key is also set.
+
+The XML does not change: the new keys live inside the `<DisplayNames>` calculation. A field
+using all three keys and two null entries copied from FileMaker Pro 26.1 in exactly the
+§14.2 shape (seen in FileMaker's copy, not pasted back; see §13). In the 26.1.1 engine,
+`FieldDisplayNames()` returned the null keys as `null` alongside the others (observed
+once). What a 26.0.x client does with these keys has not been tested.
+
 The `<Calculation>` is stored verbatim, including empty-string keys, and round-trips
-unchanged. The sparse return documented for `FieldDisplayNames()` (only keys with values)
-is runtime output, not what is stored.
+unchanged. `FieldDisplayNames()` returns the keys the calculation sets with a value — a key
+set to an empty string is not returned — and keys set to `JSONNull` come back as `null`
+(26.1.1 engine, observed once); that is runtime output, not what is stored.
 
 ### 14.3 Generation guidance
 

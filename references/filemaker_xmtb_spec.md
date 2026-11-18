@@ -127,7 +127,10 @@ re-exported: /*<Field Missing> + 1*/
 The field exists and looks normal in the field list, but its calculation evaluates to
 nothing. This is the sneakiest silent-failure mode in the format: no error, no drop,
 just a dead calc. The same neutralisation presumably applies to any syntactically
-invalid calculation, though only the Missing token is round-trip confirmed.
+invalid calculation, though only the Missing token is round-trip confirmed. Do not extend
+that presumption to other handlers: a FileMaker 26.1 calculated value list whose formula
+has a syntax error, names a missing field or occurrence, or contains a `<Field Missing>`
+token is dropped on paste, not neutralised (value list spec §3.4).
 
 Generation: never emit Missing tokens (they arrive comment-wrapped and dead). Analysis:
 flag both bare Missing tokens in exports and calculations whose entire body is
@@ -138,6 +141,12 @@ comment-wrapped — the latter is the post-paste signature of a neutralised calc
 Every behaviour in this spec is paste-verified on v26. The only export-observed item not
 yet independently generation-tested is the `"ModificationName"` auto-enter value (field
 spec §5.2), which is symmetric with the confirmed `"CreationName"`.
+
+Fixed in FileMaker 26.1.1 (release notes): copying and pasting a table in Manage Database
+created a table with fewer fields than the original if a field name contained a hidden
+character. The notes do not say whether the fields were lost on copy or on paste, so on
+26.0.x compare the pasted table's field count with the source table, and treat a 26.0.x
+table copy as possibly incomplete when its field names may carry hidden characters (§9).
 
 ## 9. Copy-side fossils (analysis, not generation)
 
@@ -165,6 +174,8 @@ Expect, and never generate:
   `<Field table="" id="0" name=""/>` when the relationship or source field is absent, as in
   a freshly pasted standalone table.
 - `table=""` on `<Calculation>` — broken evaluation context (field spec §6.1).
+- Fewer fields than the source table — before 26.1.1, a table whose field names contained
+  a hidden character could lose fields when copied and pasted (§8).
 
 ---
 

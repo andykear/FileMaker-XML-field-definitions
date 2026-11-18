@@ -1,8 +1,8 @@
 # Canonical XML Format for FileMaker Value List Definitions (XMVL)
 
 **Author:** Andrew Kear, Clockwork Creative Technology
-**Version:** 2.1
-**Verified against:** FileMaker Pro 2026 (v26) on macOS, by round-trip (generate XML, paste, re-export, diff). Every behaviour carrying a ✓ (round trip) marker is paste-verified; writer-side and open items are marked accordingly.
+**Version:** 2.2
+**Verified against:** FileMaker Pro 2026 (v26) on macOS, by round-trip (generate XML, paste, re-export, diff). Every behaviour carrying a ✓ (round trip) marker is paste-verified; writer-side and open items are marked accordingly. The calculation arm (§3.4) is tagged `[26.1+]` and was verified on FileMaker Pro 26.1.
 **Licence:** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ---
@@ -16,7 +16,7 @@ fields and tables paste. Companion specs: `filemaker_xmfd_spec.md` (field defini
 
 Corroboration: writer side from production corpora totalling ~850 value lists across
 independent live systems; paste side round-trip verified on v26 across all three source
-arms (Custom, Field, External), id and collision behaviour, separator handling, the
+arms (Custom, Field, External), plus the 26.1 calculation arm (§3.4), id and collision behaviour, separator handling, the
 fossil rule, and dangling-reference handling (§9). All examples below are synthetic; no
 production data or live host appears.
 
@@ -34,6 +34,8 @@ paste-side are different claims:
 external references **by name**; the `id` you supply is advisory and gets **rewritten to
 reality** — healed to the true id when the name matches, zeroed to a Missing marker when
 it does not. The value list's own `id` is the sole exception: it is always reassigned.
+The 26.1 calculation arm behaves differently: a formula naming a field or table occurrence
+that does not resolve is dropped whole, not zeroed (§3.4).
 This is the same name-binding, context-rewriting behaviour the table handler shows (table
 spec §4, §7).
 
@@ -81,10 +83,16 @@ Source → [CustomValues] → [PrimaryField] → [SecondaryField] → [ShowRelat
 `ShowRelated` and `External` are **mutually exclusive** — the Field arm uses `ShowRelated`,
 the External arm uses `External`, in the same structural slot.
 
+`[26.1+]` A calculation list carries `FromCalculation` directly after `Source` (§3.4). Where
+it sits relative to fossil arms (§6) has not been captured.
+
 | Element | Attributes / content | Notes | Scope |
 |---|---|---|---|
 | `ValueList` | `id`, `name` | Top-level. `id` always reassigned on paste (§8). | ✓ (round trip) |
-| `Source` | `value` = `Custom` \| `Field` \| `External` | Selects the active arm. Self-closing. | ✓ (round trip) |
+| `Source` | `value` = `Custom` \| `Field` \| `External` \| `FromCalculation` `[26.1+]` | Selects the active arm. Self-closing. | ✓ (round trip) |
+| `FromCalculation` `[26.1+]` | contains `Calculation`, then `DisplayCalculation` | Calculation arm payload (§3.4). Absent when the formula is empty ✓ (writer), and after pasting a formula that does not parse or resolve ✓ (round trip). | ✓ (round trip) |
+| `Calculation` (in `FromCalculation`) | CDATA formula | The formula that produces the list. | ✓ (round trip) |
+| `DisplayCalculation` (in `FromCalculation`) | `Chunk` children | Tokenised copy of the formula; FileMaker rebuilds it on paste, so generators omit it (§3.4). | ✓ (round trip) |
 | `CustomValues` | contains one `Text` | Custom arm payload. Empty box → self-closing `<Text/>`. | ✓ (round trip) |
 | `Text` | CR-delimited values | See §4. | ✓ (round trip) |
 | `PrimaryField` | `show`, `sort`, `resortLanguage` | Contains a `Field`. `show` encodes the display choice with `SecondaryField` (§3.2); `resortLanguage` on the sort key. | ✓ (round trip) |
@@ -189,6 +197,52 @@ the noisiest failure in the format: a bad External arm interrupts paste with a c
 error before installing dead, so never emit an External arm whose data source is not
 guaranteed present in the target. ✓ (round trip)
 
+**3.4 Values from a calculation `[26.1+]`** — new in FileMaker 26.1 ("Use calculated value
+list" in Edit Value List). The source value is `FromCalculation`, not `Calculation`:
+
+```xml
+<ValueList id="5" name="colours">
+  <Source value="FromCalculation"/>
+  <FromCalculation>
+    <Calculation><![CDATA[List ( "Red" ; "Green" ; "Blue" )]]></Calculation>
+  </FromCalculation>
+</ValueList>
+```
+
+- **`DisplayCalculation` is FileMaker's own, so omit it.** Copy output adds a
+  `<DisplayCalculation>` after `<Calculation>`: the same formula split into `<Chunk>` tokens
+  of type `FunctionRef`, `NoRef` and `FieldRef`. A list generated without it pasted and came
+  back with it rebuilt. ✓ (round trip)
+- **Field references bind by name.** Write them as `Occurrence::Field` in the formula. A
+  generated list using `T::f` and `T::dn` pasted, and FileMaker's rebuilt
+  `DisplayCalculation` carried each as
+  `<Chunk type="FieldRef"><Field table="T" id="1" name="f"/></Chunk>`, with field ids (1 and
+  2) matching the target's fields. ✓ (round trip, one case)
+- **A formula that does not parse or does not resolve is silently dropped.** Four generated
+  lists pasted with no error and copied back as `<Source value="FromCalculation"/>` with no
+  `FromCalculation` block: one with a syntax error (an unterminated `List (` call), one
+  naming a field that does not exist (`T::nope`), one naming a table occurrence that does
+  not exist (`NoSuchTO::f`), and one containing a literal `<Field Missing>` token.
+  `Import.log` counted them as imported with error 0, and the list view showed no values.
+  A calculation list never installs a dead binding: where a Field-arm reference is zeroed to
+  `<Field Missing>` (§7) and a table calculation containing `<Field Missing>` is kept and
+  comment-wrapped (table spec §7), here the whole formula is lost. A syntax error on table
+  paste was not tested. Before generating, check the formula's syntax and that every field
+  and occurrence it names exists in the target. ✓ (round trip)
+- **An empty formula** copies as `<Source value="FromCalculation"/>` with no
+  `FromCalculation` block. ✓ (writer)
+- **What the formula returns** (FileMaker 26.1.1 release notes): either a return-separated
+  list, one value per line, or JSON of the shape
+  `{ "ValueList" : { "values" : [ { "display" : "…" }, … ] } }`, where each element may add
+  **one** second key — `displaySecond` (show both values, store the first), `enterSecond`
+  (show the first, store the second) or `displayAndEnterSecond` (show both, store the
+  second). Use the same second key in every element; if elements use different second
+  keys, the second key in the last element that has one decides for the whole list. A
+  JSON-returning formula copies like any other ✓ (writer); that it displays and stores the
+  right values comes from the release notes, not from a test.
+- Leave the calculation arm out for a 26.0.x target; what 26.0 does with
+  `Source value="FromCalculation"` on paste has not been tested.
+
 ## 4. Separator and divider semantics
 
 - Values are separated by carriage return, serialised `&#13;`. Custom arm round-trips
@@ -257,6 +311,9 @@ Value List dialog shows only the active arm; the fossil is invisible from the UI
 present in storage — confirmed by pasting a fossil-bearing list and re-copying it with the
 fossil intact. ✓ (round trip)
 
+Whether a calculation list (§3.4) carries fossils from an earlier Custom or Field
+configuration, or leaves one behind when switched to another source, has not been tested. ○
+
 **Generation rule: emit only the active arm.** Because paste *installs* the inactive arm
 rather than ignoring it, a generator that emits both arms ships a phantom hidden arm into
 the target — not a harmless no-op.
@@ -270,7 +327,8 @@ leaves the building.**
 
 The writer preserves broken bindings verbatim, and **paste installs them as live-looking
 but dead** rather than rejecting them (same family as the table spec §7, invalid-calc
-neutralisation).
+neutralisation). The exception is a calculated value list's formula that does not parse or
+names a missing field or occurrence, which is dropped, not kept (§3.4).
 
 A field reference whose **name does not resolve** installs with the source intact and the
 field shown as `<Field Missing>` — no paste error. On paste the `id` is **zeroed to `0`**:
@@ -352,8 +410,12 @@ The original reader-test set is fully resolved:
 | External data source (FileReference) | Eager: FM opens the file on paste. Missing source → error modal, then live dangle (`<File Missing>` + `<Value List Missing>`). |
 | Fossil install vs strip | Installs (not stripped). |
 | Dangling install vs neutralise | Installs as a dead `<Field Missing>` binding, no error. |
+| Calculation arm (26.1) | `FromCalculation` pastes and binds; `DisplayCalculation` is rebuilt by FileMaker; field references bind by name; a formula that does not parse, or names a missing field or occurrence, is dropped silently. |
 
 **Remaining open (○):**
+
+- **Calculation arm and fossils** — whether a calculation list carries or leaves fossil
+  arms (§6), and what a 26.0.x client does with `FromCalculation` on paste.
 
 - **The layout `DDRInfo` value-list reference** (`<ValueList id="N"/>`, in the layout
   skill) is a *different* reference in a *different* handler. This spec's name-binding does
