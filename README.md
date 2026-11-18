@@ -17,9 +17,9 @@ This specification documents what the paste handlers actually accept across thre
 
 Classes of silent failure that are invisible after paste, each documented with the rule that avoids it:
 
-- **Invalid calculations are neutralised, not rejected** — the field looks normal and does nothing.
+- **Invalid calculations are neutralised, not rejected** — the field looks normal and does nothing. (A 26.1 calculated value list is the exception: a formula that doesn't parse or names something missing is dropped, and the list arrives empty.)
 - **Fossils install invisibly** — a disabled value list arm, lookup, or validation option rides its stale data into the target.
-- **Unresolvable references install as dead bindings** — a missing name goes dead (silently for fields; a missing external source is the one loud exception).
+- **Unresolvable references install as dead bindings** — a missing name goes dead (silently for fields; a missing external source is the one loud exception). Inside a 26.1 calculated value list's formula, a missing name loses the whole formula instead.
 - **Name collisions rename and rebind** — a clashing table or field is silently suffixed and its references rewritten to follow.
 - **Element and dependency traps** — duplicate field IDs drop calculations, Furigana drops on an unresolved value list, a pasted serial `nextValue` becomes the live counter.
 
@@ -50,8 +50,8 @@ references/
   filemaker_xmtb_spec.md            — Table definitions (XMTB): the BaseTable envelope,
                                       collision rename and rebind, forward references,
                                       serial nextValue, per-table ID scope, graph occurrence
-  filemaker_xmvl_spec.md            — Value list definitions (XMVL): custom, field, and
-                                      external source arms, separators, show/sort, the
+  filemaker_xmvl_spec.md            — Value list definitions (XMVL): custom, field,
+                                      external and calculation source arms, separators, show/sort, the
                                       fossil rule, dangling handling, by-name resolution
 ```
 
@@ -118,6 +118,7 @@ Found something that doesn't round-trip? A production export that contradicts th
 
 | Version | Notes |
 |---|---|
+| 2.2 | **FileMaker 26.1 support — tagged `[26.1+]`.** Calculated value lists (`FromCalculation`) paste-verified, including the silent drop of formulas that don't parse or don't resolve; new display-name keys `fm_import`, `fm_sql`, `fm_odata`. |
 | 2.1 | Value list definitions added as a third catalog (filemaker_xmvl_spec.md), and the reference split into one spec per catalog. Value list paste round-trip verified on v26 across all three source arms: handler exists, id reassigned, collision rename, LF separator functional, references resolve by name with id self-heal, fossil install, dangling install as dead binding. Clipboard type codes documented as transport. |
 | 2.0 | Table-level paste. The BaseTable envelope round-trip verified on v26, byte identical: whole tables and multi-table schemas paste from the Tables tab at full fidelity, each with a graph occurrence. Forward references resolve, serial nextValue honoured, per-table ID scope, collision rename with context and reference rebinding, invalid calculation neutralisation documented. Copy-side fossil catalogue for analysing production exports. |
 | 1.0 | FileMaker 2026 (v26) verified. Annotation and display name elements (display names confirmed as a JSON-returning calculation), full 13-operation summary set, calculated validation messages, container external storage, lookup, and Furigana all round-trip confirmed on v26. |
